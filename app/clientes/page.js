@@ -7,6 +7,11 @@ export default function Clientes() {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [newCliente, setNewCliente] = useState({ nombre: '', telefono: '', email: '', notas: '' })
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferMode, setTransferMode] = useState('export')
+  const [exportData, setExportData] = useState('')
+  const [importCode, setImportCode] = useState('')
+  const [transferStatus, setTransferStatus] = useState('')
   const router = useRouter()
 
   useEffect(() => {
@@ -59,6 +64,68 @@ export default function Clientes() {
     return { total, vencidos, porVencer }
   }
 
+  // ======= TRANSFER FUNCTIONS =======
+  const handleExport = () => {
+    const data = {
+      clientes: clientes,
+      pin: localStorage.getItem('dvpro_pin'),
+      exportedAt: new Date().toISOString()
+    }
+    const exportString = btoa(JSON.stringify(data))
+    setExportData(exportString)
+    setTransferStatus(`✅ Listo (${Math.round(exportString.length/1024*10)/10}KB)`)
+  }
+
+  const handleDownloadFile = () => {
+    if (!exportData) handleExport()
+    const blob = new Blob([exportData], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `docvault-${new Date().toISOString().slice(0,10)}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    setTransferStatus('✅ Archivo descargado')
+  }
+
+  const handleFileImport = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setImportCode(event.target.result)
+      setTransferStatus('✅ Archivo cargado')
+    }
+    reader.readAsText(file)
+  }
+
+  const handleImport = () => {
+    if (!importCode.trim()) {
+      setTransferStatus('❌ Selecciona un archivo o pega el código')
+      return
+    }
+    try {
+      const data = JSON.parse(atob(importCode.trim()))
+      if (data.clientes) {
+        localStorage.setItem('dvpro_clientes', JSON.stringify(data.clientes))
+        if (data.pin) localStorage.setItem('dvpro_pin', data.pin)
+        setClientes(data.clientes)
+        setTransferStatus(`✅ Importados ${data.clientes.length} clientes`)
+        setTimeout(() => {
+          setShowTransfer(false)
+          setImportCode('')
+          setTransferStatus('')
+        }, 1500)
+      } else {
+        setTransferStatus('❌ Formato inválido')
+      }
+    } catch (err) {
+      setTransferStatus('❌ Error al importar')
+    }
+  }
+
   const filteredClientes = clientes.filter(c => 
     c.nombre.toLowerCase().includes(search.toLowerCase())
   )
@@ -67,7 +134,10 @@ export default function Clientes() {
     <div style={styles.container}>
       <div style={styles.header}>
         <h1 style={styles.title}>📁 DocVault <span style={{color:'#d946ef'}}>Pro</span></h1>
-        <button style={styles.lockBtn} onClick={() => router.push('/')}>🔒</button>
+        <div style={{display:'flex', gap:'0.5rem'}}>
+          <button style={styles.transferBtn} onClick={() => { setShowTransfer(true); setTransferMode('export'); handleExport(); }}>🔄</button>
+          <button style={styles.lockBtn} onClick={() => router.push('/')}>🔒</button>
+        </div>
       </div>
 
       <input
@@ -329,5 +399,23 @@ const styles = {
     padding: '1rem',
     color: '#555',
     fontSize: '0.8rem'
+  },
+  transferBtn: {
+    background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '0.6rem 0.9rem',
+    color: '#fff',
+    fontSize: '1.1rem',
+    cursor: 'pointer'
+  },
+  tabBtn: {
+    flex: 1,
+    padding: '0.7rem',
+    borderRadius: '8px',
+    border: 'none',
+    color: '#fff',
+    fontWeight: '500',
+    cursor: 'pointer'
   }
 }
